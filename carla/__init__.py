@@ -11,6 +11,7 @@ except ImportError:
 
 from .agent import BrewingAgent
 from .env import BrewingEnvironment
+from .export import DataExporter
 from .models import BrewAction, BrewEvaluation, BrewState
 
 __all__ = [
@@ -19,4 +20,5 @@ __all__ = [
     "BrewState",
     "BrewingAgent",
     "BrewingEnvironment",
+    "DataExporter",
 ]

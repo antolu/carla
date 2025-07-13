@@ -9,11 +9,15 @@ from datetime import datetime
 from dateutil import parser as date_parser
 
 from .agent import BrewingAgent
+from .export import DataExporter
 from .models import MAX_RATING, MIN_RATING, BrewEvaluation, BrewRecord, BrewState
 from .persistence import StorageManager
 
 # Date parsing threshold
 MAX_SHORT_DATE_LENGTH = 10
+
+# Export command arguments
+EXPORT_ARGS_COUNT = 2
 
 
 class CarlaShell(cmd.Cmd):
@@ -26,6 +30,7 @@ class CarlaShell(cmd.Cmd):
         super().__init__()
         self.storage_manager = StorageManager()
         self.agent = BrewingAgent()
+        self.exporter = DataExporter(self.storage_manager)
         self.last_suggested_record: BrewRecord | None = None
 
     def do_switch_user(self, username: str) -> None:
@@ -227,6 +232,39 @@ class CarlaShell(cmd.Cmd):
                 print(f"  - {user}{marker}")
         else:
             print("No users found.")
+
+    def do_export(self, args: str) -> None:
+        """Export brew data to file. Usage: export <format> <filename>"""
+        if not self._check_user():
+            return
+
+        parts = args.strip().split()
+        if len(parts) != EXPORT_ARGS_COUNT:
+            print("Usage: export <format> <filename>")
+            print("Formats: csv, json, txt")
+            print("Examples:")
+            print("  export csv my_brews.csv")
+            print("  export json backup.json")
+            print("  export txt brew_log.txt")
+            return
+
+        format_type, filename = parts
+        format_type = format_type.lower()
+
+        try:
+            if format_type == "csv":
+                self.exporter.export_to_csv(filename)
+                print(f"✅ Exported to {filename} (CSV format)")
+            elif format_type == "json":
+                self.exporter.export_to_json(filename)
+                print(f"✅ Exported to {filename} (JSON format)")
+            elif format_type == "txt":
+                self.exporter.export_to_text(filename)
+                print(f"✅ Exported to {filename} (Text format)")
+            else:
+                print("Invalid format. Use: csv, json, or txt")
+        except Exception as e:
+            print(f"Export failed: {e}")
 
     def do_exit(self, _: str) -> bool:
         """Exit CARLA."""
