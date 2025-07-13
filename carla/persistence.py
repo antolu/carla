@@ -146,11 +146,13 @@ class StorageManager:
     def __init__(self) -> None:
         self._current_user: str | None = None
         self._user_storage: UserStorage | None = None
+        self._global_config_file = Path.home() / ".carla" / "config.json"
 
     def switch_user(self, username: str) -> None:
         """Switch to a different user."""
         self._current_user = username
         self._user_storage = UserStorage(username)
+        self.set_last_user(username)
 
     @property
     def current_user(self) -> str | None:
@@ -172,4 +174,46 @@ class StorageManager:
             return []
 
         return [d.name for d in carla_dir.iterdir() if d.is_dir()]
+
+    def get_last_user(self) -> str | None:
+        """Get the last used username from global config."""
+        if not self._global_config_file.exists():
+            return None
+
+        try:
+            with open(self._global_config_file, encoding="utf-8") as f:
+                config = json.load(f)
+            return config.get("last_user")
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def set_last_user(self, username: str) -> None:
+        """Set the last used username in global config."""
+        # Ensure .carla directory exists
+        self._global_config_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Load existing config or create new one
+        config = {}
+        if self._global_config_file.exists():
+            try:
+                with open(self._global_config_file, encoding="utf-8") as f:
+                    config = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                config = {}
+
+        # Update and save
+        config["last_user"] = username
+        try:
+            with open(self._global_config_file, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+        except OSError:
+            pass  # Silently fail if can't write config
+
+    def auto_load_user(self) -> bool:
+        """Automatically load the last user if available."""
+        last_user = self.get_last_user()
+        if last_user and last_user in self.list_users():
+            self.switch_user(last_user)
+            return True
+        return False
 

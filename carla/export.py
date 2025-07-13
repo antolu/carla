@@ -105,7 +105,7 @@ class DataExporter:
                 textfile.write(f"Brew #{i}\n")
                 textfile.write(f"Date: {record['timestamp']}\n")
                 textfile.write("Action:\n")
-                textfile.write(f"  Grind Size: {record['action']['grind_size']:.1f}\n")
+                textfile.write(f"  Grind Size: {record['action']['grind_size']}\n")
                 textfile.write(f"  Brew Volume: {record['action']['brew_volume']:.1f} ml\n")
                 textfile.write(f"  Coffee Dose: {record['action']['coffee_dose']:.1f} g\n")
                 textfile.write("State:\n")

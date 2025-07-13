@@ -25,21 +25,19 @@ MAX_BREW_TIME = 45
 # Date parsing threshold
 MAX_SHORT_DATE_LENGTH = 10
 
-# Bean freshness thresholds (days)
-FRESH_BEAN_DAYS = 3
-PEAK_FRESHNESS_DAYS = 14
+# Removed bean freshness constants - agent will learn these relationships
 
 
 class BrewingEnvironment:
     """Environment for brewing parameter optimization."""
 
     # Action space bounds
-    GRIND_SIZE_BOUNDS = (1.0, 10.0)  # 1=very fine, 10=very coarse
+    GRIND_SIZE_BOUNDS = (1, 30)  # 1=very fine, 30=very coarse (integer settings)
     BREW_VOLUME_BOUNDS = (25.0, 50.0)  # ml
     COFFEE_DOSE_BOUNDS = (15.0, 25.0)  # g
 
     # Discretization for Q-learning
-    GRIND_SIZE_STEPS = 20
+    GRIND_SIZE_STEPS = 30
     BREW_VOLUME_STEPS = 10
     COFFEE_DOSE_STEPS = 10
 
@@ -75,7 +73,7 @@ class BrewingEnvironment:
 
     def get_random_action(self) -> BrewAction:
         """Generate a random valid action."""
-        grind_size = random.uniform(*self.GRIND_SIZE_BOUNDS)
+        grind_size = random.randint(*self.GRIND_SIZE_BOUNDS)
         brew_volume = random.uniform(*self.BREW_VOLUME_BOUNDS)
         coffee_dose = random.uniform(*self.COFFEE_DOSE_BOUNDS)
 
@@ -86,35 +84,11 @@ class BrewingEnvironment:
         )
 
     def get_baseline_action(self, state: BrewState) -> BrewAction:
-        """Get a reasonable baseline action based on state."""
-        if state.is_first_brew:
-            # Conservative first brew
-            grind_size = 5.0  # Medium grind
-            brew_volume = 35.0  # Standard volume
-            coffee_dose = 18.0  # Standard dose
-        else:
-            # Adjust based on days since roast
-            days = state.days_since_roast
-            if days <= FRESH_BEAN_DAYS:
-                # Fresh beans - coarser grind, shorter extraction
-                grind_size = 6.0
-                brew_volume = 30.0
-                coffee_dose = 17.0
-            elif days <= PEAK_FRESHNESS_DAYS:
-                # Peak freshness
-                grind_size = 5.0
-                brew_volume = 35.0
-                coffee_dose = 18.0
-            else:
-                # Older beans - finer grind, longer extraction
-                grind_size = 4.0
-                brew_volume = 40.0
-                coffee_dose = 19.0
-
+        """Get neutral baseline action using standard espresso values."""
         return BrewAction(
-            grind_size=grind_size,
-            brew_volume=brew_volume,
-            coffee_dose=coffee_dose
+            grind_size=15,    # Neutral middle of 1-30 range - to be learned
+            brew_volume=40.0, # Standard espresso volume
+            coffee_dose=18.0  # Standard espresso dose
         )
 
     def calculate_reward(self, evaluation: BrewEvaluation) -> float:
@@ -171,7 +145,7 @@ class BrewingEnvironment:
             return -0.1
         return 0.0
 
-    def _discretize_grind(self, grind_size: float) -> int:
+    def _discretize_grind(self, grind_size: int) -> int:
         """Discretize grind size to index."""
         min_val, max_val = self.GRIND_SIZE_BOUNDS
         idx = int((grind_size - min_val) / (max_val - min_val) * (self.GRIND_SIZE_STEPS - 1))
@@ -189,10 +163,11 @@ class BrewingEnvironment:
         idx = int((coffee_dose - min_val) / (max_val - min_val) * (self.COFFEE_DOSE_STEPS - 1))
         return max(0, min(self.COFFEE_DOSE_STEPS - 1, idx))
 
-    def _undiscretize_grind(self, idx: int) -> float:
-        """Convert grind index back to continuous value."""
+    def _undiscretize_grind(self, idx: int) -> int:
+        """Convert grind index back to integer value."""
         min_val, max_val = self.GRIND_SIZE_BOUNDS
-        return min_val + (idx / (self.GRIND_SIZE_STEPS - 1)) * (max_val - min_val)
+        grind_float = min_val + (idx / (self.GRIND_SIZE_STEPS - 1)) * (max_val - min_val)
+        return int(round(grind_float))
 
     def _undiscretize_volume(self, idx: int) -> float:
         """Convert volume index back to continuous value."""

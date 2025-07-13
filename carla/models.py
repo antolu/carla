@@ -13,7 +13,7 @@ MAX_RATING = 10
 @dataclass
 class BrewAction:
     """Action parameters for brewing espresso."""
-    grind_size: float  # Most important parameter
+    grind_size: int  # Most important parameter (1-30, discrete grinder settings)
     brew_volume: float  # ml
     coffee_dose: float  # g
 
@@ -21,7 +21,7 @@ class BrewAction:
 @dataclass
 class BrewState:
     """State information for brewing context."""
-    is_first_brew: bool
+    is_first_brew: bool  # First brew after machine startup (warming up)
     days_since_roast: int
 
     @classmethod

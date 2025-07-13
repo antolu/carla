@@ -23,7 +23,7 @@ EXPORT_ARGS_COUNT = 2
 class CarlaShell(cmd.Cmd):
     """Interactive shell for CARLA brewing optimization."""
 
-    intro = "Welcome to CARLA - Coffee Aficionado, RL Agent!\nType 'help' for commands.\n"
+    intro = "\nType 'help' for commands.\n"
     prompt = "(carla) "
 
     def __init__(self) -> None:
@@ -32,6 +32,7 @@ class CarlaShell(cmd.Cmd):
         self.agent = BrewingAgent()
         self.exporter = DataExporter(self.storage_manager)
         self.last_suggested_record: BrewRecord | None = None
+        self._setup_user()
 
     def do_switch_user(self, username: str) -> None:
         """Switch to a different user profile."""
@@ -69,8 +70,11 @@ class CarlaShell(cmd.Cmd):
             return
 
         # Ask for is_first_brew
-        first_brew_input = input("Is this your first brew with these beans? (y/n): ").strip().lower()
-        is_first_brew = first_brew_input in {"y", "yes", "1", "true"}
+        first_brew_input = input("Is this the first brew after starting the machine? (y/n, default: n): ").strip().lower()
+        if not first_brew_input:
+            is_first_brew = False  # Default to no
+        else:
+            is_first_brew = first_brew_input in {"y", "yes", "1", "true"}
 
         # Create state
         state = BrewState.from_roast_date(roast_date, is_first_brew=is_first_brew)
@@ -90,11 +94,11 @@ class CarlaShell(cmd.Cmd):
 
         # Display suggestion
         print("\n📊 Brew Suggestion:")
-        print(f"  Grind Size: {action.grind_size:.1f} (1=very fine, 10=very coarse)")
+        print(f"  Grind Size: {action.grind_size} (1=very fine, 30=very coarse)")
         print(f"  Brew Volume: {action.brew_volume:.1f} ml")
         print(f"  Coffee Dose: {action.coffee_dose:.1f} g")
         print("\nState Context:")
-        print(f"  First brew: {'Yes' if state.is_first_brew else 'No'}")
+        print(f"  First brew after startup: {'Yes' if state.is_first_brew else 'No'}")
         print(f"  Days since roast: {state.days_since_roast}")
         print("\nBrew your coffee and use 'evaluate' to provide feedback!")
 
@@ -112,25 +116,28 @@ class CarlaShell(cmd.Cmd):
             print("Last brew has already been evaluated.")
             return
 
-        print("Please rate your brew (1-10 scale, press Enter to skip):")
+        print("Please rate your brew (1-10 scale, press Enter for defaults):")
 
         evaluation = BrewEvaluation()
 
         # Collect ratings
-        evaluation.bitterness = self._get_rating("Bitterness (1=none, 10=very bitter)")
-        evaluation.acidity = self._get_rating("Acidity (1=none, 10=very acidic)")
-        evaluation.taste_strength = self._get_rating("Taste Strength (1=weak, 10=very strong)")
-        evaluation.overall_experience = self._get_rating("Overall Experience (1=poor, 10=excellent)")
+        evaluation.bitterness = self._get_rating("Bitterness (1=none, 10=very bitter)", default=5)
+        evaluation.acidity = self._get_rating("Acidity (1=none, 10=very acidic)", default=5)
+        evaluation.taste_strength = self._get_rating("Taste Strength (1=weak, 10=very strong)", default=6)
+        evaluation.overall_experience = self._get_rating("Overall Experience (1=poor, 10=excellent)", default=7)
 
         # Optional metrics
         evaluation.channeling = self._get_rating("Channeling (1=none, 10=severe) [optional]")
 
-        brew_time_input = input("Brew time in seconds [optional]: ").strip()
-        if brew_time_input:
+        brew_time_input = input("Brew time in seconds [optional, default: 30]: ").strip()
+        if not brew_time_input:
+            evaluation.brew_time = 30.0  # Default brew time
+        elif brew_time_input:
             try:
                 evaluation.brew_time = float(brew_time_input)
             except ValueError:
-                print("Invalid brew time, skipping.")
+                print("Invalid brew time, using default of 30 seconds.")
+                evaluation.brew_time = 30.0
 
         # Update storage
         self.storage_manager.storage.update_last_brew_evaluation(evaluation)
@@ -287,12 +294,17 @@ class CarlaShell(cmd.Cmd):
             return False
         return True
 
-    def _get_rating(self, prompt: str) -> int | None:
+    def _get_rating(self, prompt: str, default: int | None = None) -> int | None:
         """Get a rating from user input."""
         while True:
-            response = input(f"{prompt}: ").strip()
+            if default is not None:
+                full_prompt = f"{prompt} (default: {default})"
+            else:
+                full_prompt = prompt
+            response = input(f"{full_prompt}: ").strip()
+
             if not response:
-                return None
+                return default
 
             try:
                 rating = int(response)
@@ -309,6 +321,44 @@ class CarlaShell(cmd.Cmd):
     def default(self, line: str) -> None:
         """Handle unknown commands."""
         print(f"Unknown command: {line}. Type 'help' for available commands.")
+
+    def _setup_user(self) -> None:
+        """Set up user on startup - auto-load last user or prompt for new one."""
+        if self.storage_manager.auto_load_user():
+            current_user = self.storage_manager.current_user
+            print(f"\n👋 Hello {current_user}!")
+            print("If this isn't you, use 'switch_user <name>' to change.")
+
+            # Load user's Q-table
+            q_table_data = self.storage_manager.storage.load_q_table()
+            self.agent.load_q_table(q_table_data)
+            self.agent.reset_last_action()
+        else:
+            # No previous user or user data doesn't exist
+            users = self.storage_manager.list_users()
+            if users:
+                print("\n👋 Welcome back to CARLA!")
+                print(f"Existing users: {', '.join(users)}")
+                username = input("Enter your username (or a new one): ").strip()
+            else:
+                print("\n👋 Welcome to CARLA!")
+                username = input("Enter your username: ").strip()
+
+            if username:
+                self.storage_manager.switch_user(username)
+                print(f"Hello {username}!")
+
+                # Load user's Q-table
+                q_table_data = self.storage_manager.storage.load_q_table()
+                self.agent.load_q_table(q_table_data)
+                self.agent.reset_last_action()
+            else:
+                print("No username provided. You can use 'switch_user <name>' later.")
+
+    def get_names(self) -> list[str]:
+        """Get command names, filtering out EOF."""
+        names = super().get_names()
+        return [name for name in names if name != "do_EOF"]
 
 
 def run_cli() -> None:
